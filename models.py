@@ -11,7 +11,6 @@ class WordGRU(nn.Module):
         self,
         embedding_dim,
         vocab_size,
-        batch_size=1,
         hidden_size=100,
         bidirectional=True,
         cuda=True
@@ -19,7 +18,6 @@ class WordGRU(nn.Module):
 
         super().__init__()
 
-        self.batch_size = batch_size
         self.cuda = cuda
         self.bidirectional = bidirectional
         self.hidden_size = hidden_size
@@ -63,7 +61,7 @@ class WordGRU(nn.Module):
 
         return torch.stack(embeds, dim=0)
 
-    def forward(self, input, hidden):
+    def forward(self, input):
         """
 
         :param hidden: Previous hidden state
@@ -71,9 +69,10 @@ class WordGRU(nn.Module):
         :return:
         """
         batch = self.seq_to_embedding(input)
-        output, hidden = self.gru(batch, hidden)
-
-        return output, hidden
+        print("Dimension of input to WordGRU ", input.shape)
+        output, _ = self.gru(batch)
+        print("Dimension of output from WordGRU ", output.shape)
+        return output
 
 
 class WordAttention(nn.Module):
@@ -94,7 +93,7 @@ class WordAttention(nn.Module):
         self.word_context = nn.Parameter(torch.randn(hidden_size, 1))
 
     def forward(self, word_outputs):
-
+        print("Dimension of input to WordAttn", word_outputs.shape)
         o = self.linear(word_outputs)
         o = self.activation(o)
         o = torch.matmul(o, self.word_context)
@@ -123,13 +122,14 @@ class SentenceGRU(nn.Module):
             input_size, hidden_size, bidirectional=bidirectional, batch_first=True
         )
 
-    def forward(self, sentence_outputs, hidden):
+    def forward(self, sentence_outputs):
         """
 
         :param sentence_outputs: Sentence vecs from the word attention layer
         :return:
         """
-        return self.gru(sentence_outputs, hidden)
+        output, _ = self.gru(sentence_outputs)
+        return output
 
 
 class SentenceAttention(nn.Module):
@@ -191,6 +191,8 @@ class OutputLayer(nn.Module):
 
 
 class HAN(nn.Module):
+    # TODO Take in a batch of documents. Iterate over each document, and pass it through WordGRU. Accumulate results for all documents from WordGRU and WordAttn
+    # TODO Pass the accumulated results from Word Encoder to Sentence Encoder to Output Layer
 
     def __init__(self, vocab_size, embedding_dim ,word_hidden_size, sent_hidden_size, num_labels, batch_size, bidirectional, cuda):
         """
@@ -203,6 +205,8 @@ class HAN(nn.Module):
         :param bidirectional:
         :param cuda:
         """
+
+        super().__init__()
 
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
@@ -218,38 +222,57 @@ class HAN(nn.Module):
         self.word_gru = WordGRU(
             embedding_dim, vocab_size, word_hidden_size, bidirectional, cuda
         )
-        self.word_attn = WordAttention(word_hidden_size * directions)
+        self.word_attn = WordAttention(word_hidden_size * self.directions)
 
         self.sentence_gru = SentenceGRU(
-            word_hidden_size * directions, sent_hidden_size, bidirectional
+            word_hidden_size * self.directions, sent_hidden_size, bidirectional
         )
         self.sentence_attn = SentenceAttention(
-            directions * sent_hidden_size
+            self.directions * sent_hidden_size
         )
 
         self.output_layer = OutputLayer(
-            directions * sent_hidden_size
+            self.directions * sent_hidden_size, self.num_labels
         )
 
+    def forward(self, documents):
+        """
+        # TODO should this function be responsible for padding the sequence as well? I think no
 
-        def forward(self, inputs):
-            """
+        :param self:
+        :param documents: A 3D array of shape [batch_size, sents, words]
+        :return:
+        """
+        # Get encoded sentences
+        # Unsqueeze them
+        # Combine them
 
-            :param self:
-            :param inputs:
-            :return:
-            """
-            # Get encoded sentences
-            # Unsqueeze them
-            # Combine them
-            return
+        # Encode Words using WordGRU and WordAttn
 
-        def set_embedding(self, embedding):
-            """
-            Initialize the Embedding
+        sentence_vectors = []
+        for document in documents:
+            encoded_words = self.word_gru(document)
+            encoded_sentence = self.word_attn(encoded_words)
+            sentence_vectors.append(encoded_sentence)
 
-            :param self:
-            :param embedding:
-            :return:
-            """
-            return
+        document_tensor = torch.stack(sentence_vectors, dim=0)
+
+        doc_vec = self.sentence_attn(
+            self.sentence_gru(
+                document_tensor
+            )
+        )
+
+        output = self.output_layer(doc_vec)
+
+        return output
+
+    def set_embedding(self, embedding):
+        """
+        Initialize the Embedding
+
+        :param self:
+        :param embedding:
+        :return:
+        """
+        return
