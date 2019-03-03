@@ -4,6 +4,7 @@ import torch
 
 from torch.autograd import Variable
 
+from torch.nn.utils.rnn import pad_sequence
 
 class WordGRU(nn.Module):
 
@@ -12,13 +13,11 @@ class WordGRU(nn.Module):
         embedding_dim,
         vocab_size,
         hidden_size=100,
-        bidirectional=True,
-        cuda=True
+        bidirectional=True
     ):
 
         super().__init__()
 
-        self.cuda = cuda
         self.bidirectional = bidirectional
         self.hidden_size = hidden_size
 
@@ -194,14 +193,13 @@ class HAN(nn.Module):
     # TODO Take in a batch of documents. Iterate over each document, and pass it through WordGRU. Accumulate results for all documents from WordGRU and WordAttn
     # TODO Pass the accumulated results from Word Encoder to Sentence Encoder to Output Layer
 
-    def __init__(self, vocab_size, embedding_dim ,word_hidden_size, sent_hidden_size, num_labels, batch_size, bidirectional, cuda):
+    def __init__(self, vocab_size, embedding_dim ,word_hidden_size, sent_hidden_size, num_labels, bidirectional, cuda):
         """
 
         :param vocab_size:
         :param word_hidden_size:
         :param sent_hidden_size:
         :param num_labels:
-        :param batch_size:
         :param bidirectional:
         :param cuda:
         """
@@ -213,14 +211,13 @@ class HAN(nn.Module):
         self.word_hidden_size = word_hidden_size
         self.sent_hidden_size = sent_hidden_size
         self.num_labels = num_labels
-        self.batch_size = batch_size
         self.bidirectional = bidirectional
         self.cuda = cuda
 
         self.directions = 2 if bidirectional else 1
 
         self.word_gru = WordGRU(
-            embedding_dim, vocab_size, word_hidden_size, bidirectional, cuda
+            embedding_dim, vocab_size, word_hidden_size, bidirectional
         )
         self.word_attn = WordAttention(word_hidden_size * self.directions)
 
@@ -234,6 +231,12 @@ class HAN(nn.Module):
         self.output_layer = OutputLayer(
             self.directions * sent_hidden_size, self.num_labels
         )
+
+        if self.cuda:
+            self.word_gru.cuda()
+            self.word_attn.cuda()
+            self.sentence_gru.cuda()
+            self.sentence_attn.cuda()
 
     def forward(self, documents):
         """
@@ -255,7 +258,8 @@ class HAN(nn.Module):
             encoded_sentence = self.word_attn(encoded_words)
             sentence_vectors.append(encoded_sentence)
 
-        document_tensor = torch.stack(sentence_vectors, dim=0)
+        document_tensor = pad_sequence(sentence_vectors, batch_first=True)
+        print("Size of Doc Vector ", document_tensor.size())
 
         doc_vec = self.sentence_attn(
             self.sentence_gru(
