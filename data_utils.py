@@ -61,7 +61,6 @@ def load_data(filename):
         [
             "sentence_words",
             "sentence_len",
-            "max_word_count",
             "binary_label"
 
         ]

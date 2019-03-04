@@ -66,9 +66,9 @@ class WordGRU(nn.Module):
         :return:
         """
         batch = self.seq_to_embedding(input)
-        print("Dimension of input to WordGRU ", input.shape)
+        # print("Dimension of input to WordGRU ", input.shape)
         output, _ = self.gru(batch.float())
-        print("Dimension of output from WordGRU ", output.shape)
+        # print("Dimension of output from WordGRU ", output.shape)
         return output
 
 
@@ -89,8 +89,9 @@ class WordAttention(nn.Module):
         self.word_context = nn.Parameter(torch.randn(hidden_size, 1))
 
     def forward(self, word_outputs):
-        print("Dimension of input to WordAttn", word_outputs.shape)
+        # print("Dimension of input to WordAttn", word_outputs.shape)
         o = self.linear(word_outputs)
+        # print("Dimension of input to WordAttn", word_outputs.shape)
         o = self.activation(o)
         o = torch.matmul(o, self.word_context)
         o = torch.mul(o, word_outputs)
@@ -168,7 +169,7 @@ class OutputLayer(nn.Module):
         self.num_labels = num_labels
 
         self.linear = nn.Linear(input_size, num_labels)
-        self.softmax = nn.LogSoftmax()
+        self.softmax = nn.Softmax()
 
     def forward(self, doc_vector):
         """
@@ -264,7 +265,7 @@ class HAN(nn.Module):
             sentence_vectors.append(encoded_sentence)
 
         document_tensor = pad_sequence(sentence_vectors, batch_first=True)
-        print("Size of Doc Vector ", document_tensor.size())
+        # print("Size of Doc Vector ", document_tensor.size())
 
         doc_vec = self.sentence_attn(self.sentence_gru(document_tensor))
 
