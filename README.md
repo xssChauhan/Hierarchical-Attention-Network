@@ -21,7 +21,9 @@ GRU layer that accepts documents as sentences and encodes the sentences
 
 Attention Layer that takes in encoded sentences and generate document vectors
 
+### HAN: `models.HAN`
 
+Monolithic class that takes in documents, and trains the network
 
 ## Download and Prepare Data
 
