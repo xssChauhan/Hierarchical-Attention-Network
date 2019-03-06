@@ -9,7 +9,7 @@ import torch
 import tqdm
 
 
-def train(filename, learning_rate=0.01, epochs=100, cuda=True):
+def train(filename, learning_rate=0.01, epochs=100, cuda=True, batch_size=32):
     """
 
     :param cuda:
@@ -49,11 +49,12 @@ def train(filename, learning_rate=0.01, epochs=100, cuda=True):
         training_loss = 0.0
         validation_loss = 0.0
 
-        data_generator = generate_data(filename, vocab2index, batch_size=64)
+        data_generator = generate_data(filename, vocab2index, batch_size=batch_size, cuda=cuda)
         network.train()
         for batch, labels in data_generator:
+
             if cuda:
-                labels = labels.long().cuda()
+                labels = labels.cuda()
             optimizer.zero_grad()
             op = network(batch)
             # print(op)
@@ -61,28 +62,30 @@ def train(filename, learning_rate=0.01, epochs=100, cuda=True):
             # print(l)
             # print(l.item())
             l.backward()
-            training_loss += l.item()*64
+            training_loss += l.item()*batch_size
             optimizer.step()
 
-        # network.eval()
-        #
-        # test_data_generator = generate_data("test.pkl", vocab2index, batch_size=32)
-        # for batch, labels in test_data_generator:
-        #     if cuda:
-        #         labels = labels.long().cuda()
-        #     output = network(batch)
-        #     val_l = loss(output, labels)
-        #     validation_loss += val_l*32
+        with torch.no_grad():
+            network.eval()
 
-        # validation_loss /= 25000
+            test_data_generator = generate_data("test.pkl", vocab2index, batch_size=batch_size, cuda=cuda)
+            for batch, labels in test_data_generator:
+                if cuda:
+                    labels = labels.long().cuda()
+
+                output = network(batch)
+                val_l = loss(output, labels)
+                validation_loss += val_l*batch_size
+
+            validation_loss /= 25000
 
         training_loss /= 50000
 
-        with open("output.txt", "w") as f:
-            f.write("Epoch: {}\t Training Loss: {:.6f} \t Validation Loss: -".format(
-                epoch, training_loss
+        with open("output_1.txt", "a") as f:
+            f.write("Epoch: {}\t Training Loss: {:.6f} \t Validation Loss: {:.6f}\n".format(
+                epoch, training_loss, validation_loss
             ))
 
 
 if __name__ == "__main__":
-    train("train.pkl", cuda=True, learning_rate=0.001)
+    train("train.pkl", cuda=True, learning_rate=0.005, batch_size=64)

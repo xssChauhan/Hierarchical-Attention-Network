@@ -19,7 +19,7 @@ class WordGRU(nn.Module):
         if embedding is not None:
             self.embedding = nn.Embedding.from_pretrained(embedding, freeze=True)
         else:
-            self.embedding = nn.Embedding(vocab_size, embedding_dim)
+            self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=vocab_size-1)
 
         self.gru = nn.GRU(
             embedding_dim, hidden_size, bidirectional=bidirectional, batch_first=True

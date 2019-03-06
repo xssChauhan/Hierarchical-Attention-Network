@@ -25,7 +25,7 @@ import numpy as np
 import joblib
 
 import torch
-from torch.nn.utils.rnn import pad_sequence
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pack_sequence
 
 
 def load_glove(glove_file, dimension: int):
@@ -38,7 +38,10 @@ def load_glove(glove_file, dimension: int):
         word = " ".join(split_line[0:len(split_line) - vector_size])
         embedding = np.array([float(val) for val in split_line[-vector_size:]])
         model[word] = embedding
+
+    model["<pad>"] = np.zeros(dimension)
     print("Done.\n" + str(len(model)) + " words loaded!")
+
 
     vocab2index = {}
     index2vocab = {}
@@ -69,19 +72,29 @@ def load_data(filename):
     return usable_df
 
 
-def convert_to_indices(sentences, vocab2index):
+def convert_to_indices(sentences, vocab2index, cuda=False):
     output = []
-
+    lengths = []
     for sentence in sentences:
         indexed = [vocab2index.get(word, vocab2index.get('<unk>')) for word in sentence]
+        lengths.append(len(indexed))
         tensor = torch.LongTensor(indexed)
         output.append(tensor)
 
-    seq = pad_sequence(output, batch_first=True)
+    sorted_pairs = sorted(
+        zip(output, lengths),
+        key= lambda data: data[1],
+        reverse=True
+    )
+    lengths = [l for _,l in sorted_pairs]
+    # import ipdb; ipdb.set_trace()
+
+    seq = pad_sequence([s for s,_ in sorted_pairs], batch_first=True, padding_value=len(vocab2index)-1)
+
     return seq
 
 
-def prepare_mini_batch(mini_batch, vocab2index):
+def prepare_mini_batch(mini_batch, vocab2index, cuda=False):
     """
     Prepare mini batch for traning by padding to appropriate lengths and batch sizes
 
@@ -93,7 +106,7 @@ def prepare_mini_batch(mini_batch, vocab2index):
     for sentence_words in mini_batch.sentence_words:
         # sentence_words is list of sentences in the document
         # We convert each document to sequence at a time
-        indices = convert_to_indices(sentence_words, vocab2index)
+        indices = convert_to_indices(sentence_words, vocab2index, cuda=cuda)
         # indices = torch.LongTensor(indices)
         indexed.append(indices)
 
@@ -111,11 +124,11 @@ def _get_batch_ranges(length, batch_size):
     return range(0, length, batch_size)
 
 
-def generate_data(filename, vocab2index, batch_size=5):
+def generate_data(filename, vocab2index, batch_size=5, cuda=False):
     df = load_data(filename)
 
     batches = range(0,len(df), batch_size)
     start = 0
     for end in batches[1:]:
-        yield prepare_mini_batch(df[start:end], vocab2index)
+        yield prepare_mini_batch(df[start:end], vocab2index, cuda=cuda)
         start = end
