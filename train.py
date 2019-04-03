@@ -8,6 +8,8 @@ import torch.optim as optim
 import torch
 import tqdm
 
+from utils import plot_grad_flow
+
 
 def train(filename, learning_rate=0.01, epochs=100, cuda=True, batch_size=32):
     """
@@ -37,10 +39,9 @@ def train(filename, learning_rate=0.01, epochs=100, cuda=True, batch_size=32):
     )
 
     loss = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(
+    optimizer = optim.Adam(
         network.parameters(),
-        lr=learning_rate,
-        momentum=0.9
+        lr=learning_rate
     )
     if cuda:
         loss.cuda()
@@ -64,6 +65,8 @@ def train(filename, learning_rate=0.01, epochs=100, cuda=True, batch_size=32):
             l.backward()
             training_loss += l.item()*batch_size
             optimizer.step()
+            nn.utils.clip_grad_value_(network.parameters(), 0.25)
+            plot_grad_flow(network.named_parameters())
 
         with torch.no_grad():
             network.eval()
@@ -88,4 +91,4 @@ def train(filename, learning_rate=0.01, epochs=100, cuda=True, batch_size=32):
 
 
 if __name__ == "__main__":
-    train("train.pkl", cuda=True, learning_rate=0.005, batch_size=64)
+    train("train_s.pkl", cuda=False, learning_rate=0.005, batch_size=32, epochs=10)

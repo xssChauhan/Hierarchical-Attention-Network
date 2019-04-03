@@ -23,7 +23,7 @@ Strategy for Data:
 
 import numpy as np
 import joblib
-
+import sklearn
 import torch
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pack_sequence
 
@@ -32,6 +32,7 @@ def load_glove(glove_file, dimension: int):
     print("Loading Glove Model")
     f = open(glove_file, 'r')
     model = {}
+    model["<pad>"] = np.zeros(dimension)
     vector_size = dimension
     for line in f:
         split_line = line.strip().split()
@@ -39,7 +40,6 @@ def load_glove(glove_file, dimension: int):
         embedding = np.array([float(val) for val in split_line[-vector_size:]])
         model[word] = embedding
 
-    model["<pad>"] = np.zeros(dimension)
     print("Done.\n" + str(len(model)) + " words loaded!")
 
 
@@ -86,12 +86,12 @@ def convert_to_indices(sentences, vocab2index, cuda=False):
         key= lambda data: data[1],
         reverse=True
     )
-    lengths = [l for _,l in sorted_pairs]
+    lengths = torch.Tensor([l for _,l in sorted_pairs])
     # import ipdb; ipdb.set_trace()
 
     seq = pad_sequence([s for s,_ in sorted_pairs], batch_first=True, padding_value=len(vocab2index)-1)
 
-    return seq
+    return seq, lengths
 
 
 def prepare_mini_batch(mini_batch, vocab2index, cuda=False):
@@ -106,9 +106,9 @@ def prepare_mini_batch(mini_batch, vocab2index, cuda=False):
     for sentence_words in mini_batch.sentence_words:
         # sentence_words is list of sentences in the document
         # We convert each document to sequence at a time
-        indices = convert_to_indices(sentence_words, vocab2index, cuda=cuda)
+        indices, lengths = convert_to_indices(sentence_words, vocab2index, cuda=cuda)
         # indices = torch.LongTensor(indices)
-        indexed.append(indices)
+        indexed.append((indices, lengths))
 
     # padded = pad_sequence(indexed)
     return indexed, torch.LongTensor(mini_batch.binary_label.tolist())
@@ -126,7 +126,7 @@ def _get_batch_ranges(length, batch_size):
 
 def generate_data(filename, vocab2index, batch_size=5, cuda=False):
     df = load_data(filename)
-
+    df = sklearn.utils.shuffle(df)
     batches = range(0,len(df), batch_size)
     start = 0
     for end in batches[1:]:

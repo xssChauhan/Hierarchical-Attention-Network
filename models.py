@@ -4,7 +4,7 @@ import torch
 
 from torch.autograd import Variable
 
-from torch.nn.utils.rnn import pad_sequence
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 
 
 class WordGRU(nn.Module):
@@ -15,11 +15,12 @@ class WordGRU(nn.Module):
         self.bidirectional = bidirectional
         self.hidden_size = hidden_size
         self.is_cuda = is_cuda
+        self.vocab_size = vocab_size
 
         if embedding is not None:
             self.embedding = nn.Embedding.from_pretrained(embedding, freeze=True)
         else:
-            self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=vocab_size-1)
+            self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
 
         self.gru = nn.GRU(
             embedding_dim, hidden_size, bidirectional=bidirectional, batch_first=True
@@ -58,7 +59,7 @@ class WordGRU(nn.Module):
 
         return torch.stack(embeds, dim=0)
 
-    def forward(self, input):
+    def forward(self, input, lengths):
         """
 
         :param hidden: Previous hidden state
@@ -66,10 +67,12 @@ class WordGRU(nn.Module):
         :return:
         """
         batch = self.seq_to_embedding(input)
+        # packed = pack_padded_sequence(batch, lengths, batch_first=True)
         # print("Dimension of input to WordGRU ", input.shape)
         output, _ = self.gru(batch.float())
+        # output, lens = pad_packed_sequence(packed, batch_first=True, padding_value=0)
         # print("Dimension of output from WordGRU ", output.shape)
-        return output
+        return output.float()
 
 
 class WordAttention(nn.Module):
@@ -118,14 +121,16 @@ class SentenceGRU(nn.Module):
             input_size, hidden_size, bidirectional=bidirectional, batch_first=True
         )
 
-    def forward(self, sentence_outputs):
+    def forward(self, sentence_outputs, lengths):
         """
 
         :param sentence_outputs: Sentence vecs from the word attention layer
         :return:
         """
-        output, _ = self.gru(sentence_outputs)
-        return output
+        packed = pack_padded_sequence(sentence_outputs, lengths, batch_first=True)
+        output, _ = self.gru(packed)
+        output, lens = pad_packed_sequence(output, batch_first=True, padding_value=0)
+        return output.float()
 
 
 class SentenceAttention(nn.Module):
@@ -259,15 +264,25 @@ class HAN(nn.Module):
         # Encode Words using WordGRU and WordAttn
 
         sentence_vectors = []
-        for document in documents:
-            encoded_words = self.word_gru(document)
+        for document,lengths in documents:
+            encoded_words = self.word_gru(document, lengths)
+            encoded_words.retain_grad()
             encoded_sentence = self.word_attn(encoded_words)
             sentence_vectors.append(encoded_sentence)
 
+        sentence_lengths = [len(l) for l in sentence_vectors]
+
+        _sorted = sorted(
+            zip(sentence_vectors, sentence_lengths),
+            key= lambda a: a[1],
+            reverse=True
+        )
+        sentence_vectors = [e[0] for e in _sorted]
+        sentence_lengths = [e[1] for e in _sorted]
         document_tensor = pad_sequence(sentence_vectors, batch_first=True)
         # print("Size of Doc Vector ", document_tensor.size())
 
-        doc_vec = self.sentence_attn(self.sentence_gru(document_tensor))
+        doc_vec = self.sentence_attn(self.sentence_gru(document_tensor, sentence_lengths))
 
         output = self.output_layer(doc_vec)
 
